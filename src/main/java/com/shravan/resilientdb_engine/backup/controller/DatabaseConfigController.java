@@ -3,6 +3,7 @@ import com.shravan.resilientdb_engine.backup.entity.DatabaseConfig;
 import com.shravan.resilientdb_engine.backup.service.DatabaseConfigService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Controller for managing database configurations.
  * Kept simple as per current requirements (No DTOs, direct Entity return).
  */
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api/databases")
 public class DatabaseConfigController {

@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 /**
  * REST Controller for managing backup operations.
  */
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api/backups")
 public class BackupController {
