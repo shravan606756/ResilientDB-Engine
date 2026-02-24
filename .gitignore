@@ -1,0 +1,15 @@
+# --- Project Specific Exclusions ---
+
+# Database Backups (Bind Mount)
+# This prevents leaking your local .sql and .archive data to GitHub
+backups/
+backups/*.sql
+backups/*.archive
+
+# Local development environment overrides
+.env
+application-local.properties
+
+# Prevent pushing large binary artifacts from the build process
+target/
+*.jar
