@@ -2,24 +2,24 @@ package com.shravan.resilientdb_engine.backup.strategy.impl;
 
 import com.shravan.resilientdb_engine.backup.entity.BackupJob;
 import com.shravan.resilientdb_engine.backup.entity.DatabaseConfig;
-import com.shravan.resilientdb_engine.backup.entity.DatabaseType; // Added import
+import com.shravan.resilientdb_engine.backup.entity.DatabaseType;
 import com.shravan.resilientdb_engine.backup.strategy.BackupStrategy;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 @Component("POSTGRESQL")
 public class PostgresBackupStrategy implements BackupStrategy {
 
-    // --- FIX 1: Implement the required interface method ---
     @Override
     public DatabaseType getSupportedType() {
         return DatabaseType.POSTGRESQL;
     }
 
-    // --- FIX 2: Remove 'throws Exception' from the signature ---
     @Override
     public void execute(BackupJob job) {
         try {
@@ -43,10 +43,25 @@ public class PostgresBackupStrategy implements BackupStrategy {
                     config.getDbName()
             );
 
+            // Inject password into the environment variables
             pb.environment().put("PGPASSWORD", config.getPassword());
+
+            // Merge standard error and standard output
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
+
+            // --- THE FIX: Consume the output to prevent OS buffer deadlock ---
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // This prints the real-time pg_dump logs to your Spring Boot terminal!
+                    System.out.println("[pg_dump] " + line);
+                }
+            }
+            // -----------------------------------------------------------------
+
+            // Wait for the process to finish only AFTER the stream is fully read
             int exitCode = process.waitFor();
 
             if (exitCode != 0) {
@@ -54,15 +69,16 @@ public class PostgresBackupStrategy implements BackupStrategy {
             }
 
             File backupFile = new File(filePath);
-            if (backupFile.exists()) {
+
+            // Also adding a length check to ensure the file isn't empty
+            if (backupFile.exists() && backupFile.length() > 0) {
                 job.setFilePath(filePath);
                 job.setSizeBytes(backupFile.length());
             } else {
-                throw new RuntimeException("Backup command succeeded but no file was generated.");
+                throw new RuntimeException("Backup command succeeded but no valid file was generated.");
             }
 
         } catch (Exception e) {
-            // FIX 2 (cont): Catch checked exceptions and throw RuntimeException to trigger the retry loop
             throw new RuntimeException("PostgreSQL strategy failed: " + e.getMessage(), e);
         }
     }
