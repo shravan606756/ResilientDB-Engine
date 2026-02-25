@@ -6,7 +6,9 @@ import com.shravan.resilientdb_engine.backup.entity.DatabaseType;
 import com.shravan.resilientdb_engine.backup.strategy.BackupStrategy;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -35,7 +37,6 @@ public class MongoBackupStrategy implements BackupStrategy {
             String filePath = backupDir.getAbsolutePath() + File.separator + fileName;
 
             // Use the Connection String format for more robust authentication
-            // Format: mongodb://user:pass@host:port/dbname?authSource=admin
             String connectionString = String.format("mongodb://%s:%s@%s:%d/%s?authSource=admin",
                     config.getUsername(),
                     config.getPassword(),
@@ -55,6 +56,17 @@ public class MongoBackupStrategy implements BackupStrategy {
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
+
+            // --- THE FIX: Consume the output to prevent OS buffer deadlock ---
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // This prints the real-time mongodump logs to your Spring Boot terminal!
+                    System.out.println("[mongodump] " + line);
+                }
+            }
+            // -----------------------------------------------------------------
+
             int exitCode = process.waitFor();
 
             if (exitCode != 0) {
