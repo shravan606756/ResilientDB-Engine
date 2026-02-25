@@ -6,7 +6,9 @@ import com.shravan.resilientdb_engine.backup.entity.DatabaseType;
 import com.shravan.resilientdb_engine.backup.strategy.BackupStrategy;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -31,7 +33,6 @@ public class MySQLBackupStrategy implements BackupStrategy {
             String filePath = backupDir.getAbsolutePath() + File.separator + fileName;
 
             // Build the mysqldump command
-            // inside MySQLBackupStrategy.java execute()
             ProcessBuilder pb = new ProcessBuilder(
                     "mysqldump",
                     "--no-defaults", // Prevent reading /etc/my.cnf inside container
@@ -43,13 +44,22 @@ public class MySQLBackupStrategy implements BackupStrategy {
                     config.getDbName()
             );
 
-            pb.environment().put("MYSQL_PWD", config.getPassword());
-
             // Securely set the password in the environment variables
             pb.environment().put("MYSQL_PWD", config.getPassword());
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
+
+            // --- THE FIX: Consume the output to prevent OS buffer deadlock ---
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // This prints the real-time mysqldump logs to your Spring Boot terminal!
+                    System.out.println("[mysqldump] " + line);
+                }
+            }
+            // -----------------------------------------------------------------
+
             int exitCode = process.waitFor();
 
             if (exitCode != 0) {
