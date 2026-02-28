@@ -20,8 +20,11 @@ public class PostgresBackupStrategy implements BackupStrategy {
         return DatabaseType.POSTGRESQL;
     }
 
+    /**
+     * ✅ UPDATED: Now accepts ProcessHolder to allow OS-level process cleanup on timeout
+     */
     @Override
-    public void execute(BackupJob job) {
+    public void execute(BackupJob job, BackupStrategy.ProcessHolder processHolder) {
         try {
             DatabaseConfig config = job.getDatabaseConfig();
 
@@ -37,31 +40,30 @@ public class PostgresBackupStrategy implements BackupStrategy {
                     "-h", config.getHost(),
                     "-p", String.valueOf(config.getPort()),
                     "-U", config.getUsername(),
-                    "--no-password", // Force it to use the environment variable
-                    "-v",            // Verbose mode for better logging
+                    "--no-password",
+                    "-v",
                     "-f", filePath,
                     config.getDbName()
             );
 
-            // Inject password into the environment variables
             pb.environment().put("PGPASSWORD", config.getPassword());
-
-            // Merge standard error and standard output
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
 
-            // --- THE FIX: Consume the output to prevent OS buffer deadlock ---
+
+            // ✅ CRITICAL FIX: Store the Process in the holder
+            // This allows the timeout monitor to kill it at the OS level
+            processHolder.setProcess(process);
+
+            // Consume output to prevent deadlock
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    // This prints the real-time pg_dump logs to your Spring Boot terminal!
                     System.out.println("[pg_dump] " + line);
                 }
             }
-            // -----------------------------------------------------------------
 
-            // Wait for the process to finish only AFTER the stream is fully read
             int exitCode = process.waitFor();
 
             if (exitCode != 0) {
@@ -70,7 +72,6 @@ public class PostgresBackupStrategy implements BackupStrategy {
 
             File backupFile = new File(filePath);
 
-            // Also adding a length check to ensure the file isn't empty
             if (backupFile.exists() && backupFile.length() > 0) {
                 job.setFilePath(filePath);
                 job.setSizeBytes(backupFile.length());

@@ -20,23 +20,23 @@ public class MongoBackupStrategy implements BackupStrategy {
         return DatabaseType.MONGODB;
     }
 
+    /**
+     * ✅ UPDATED: Now accepts ProcessHolder to allow OS-level process cleanup on timeout
+     */
     @Override
-    public void execute(BackupJob job) {
+    public void execute(BackupJob job, BackupStrategy.ProcessHolder processHolder) {
         try {
             DatabaseConfig config = job.getDatabaseConfig();
 
-            // Ensure the backup directory exists
             File backupDir = new File("backups");
             if (!backupDir.exists()) {
                 backupDir.mkdirs();
             }
 
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-            // .archive is the standard extension when using the --archive flag
             String fileName = "backup_mongo_" + config.getDbName() + "_" + timestamp + ".archive";
             String filePath = backupDir.getAbsolutePath() + File.separator + fileName;
 
-            // Use the Connection String format for more robust authentication
             String connectionString = String.format("mongodb://%s:%s@%s:%d/%s?authSource=admin",
                     config.getUsername(),
                     config.getPassword(),
@@ -44,28 +44,27 @@ public class MongoBackupStrategy implements BackupStrategy {
                     config.getPort(),
                     config.getDbName());
 
-            // Build the mongodump command using the modern --uri flag
             ProcessBuilder pb = new ProcessBuilder(
                     "mongodump",
                     "--uri", connectionString,
                     "--archive=" + filePath,
-                    "--gzip" // Compression is highly recommended for MongoDB JSON-like data
+                    "--gzip"
             );
 
-            // Merge error stream with standard output so we can see why it fails in our logs
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
 
-            // --- THE FIX: Consume the output to prevent OS buffer deadlock ---
+            // ✅ CRITICAL FIX: Store the Process in the holder
+            processHolder.setProcess(process);
+
+            // Consume output to prevent deadlock
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    // This prints the real-time mongodump logs to your Spring Boot terminal!
                     System.out.println("[mongodump] " + line);
                 }
             }
-            // -----------------------------------------------------------------
 
             int exitCode = process.waitFor();
 
@@ -82,7 +81,6 @@ public class MongoBackupStrategy implements BackupStrategy {
             }
 
         } catch (Exception e) {
-            // Rethrow as RuntimeException to trigger the Retry loop in your BackupServiceImpl
             throw new RuntimeException("MongoDB strategy failed: " + e.getMessage(), e);
         }
     }

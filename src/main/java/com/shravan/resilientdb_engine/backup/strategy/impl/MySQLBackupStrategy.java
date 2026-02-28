@@ -20,8 +20,11 @@ public class MySQLBackupStrategy implements BackupStrategy {
         return DatabaseType.MYSQL;
     }
 
+    /**
+     * ✅ UPDATED: Now accepts ProcessHolder to allow OS-level process cleanup on timeout
+     */
     @Override
-    public void execute(BackupJob job) {
+    public void execute(BackupJob job, BackupStrategy.ProcessHolder processHolder) {
         try {
             DatabaseConfig config = job.getDatabaseConfig();
 
@@ -32,33 +35,32 @@ public class MySQLBackupStrategy implements BackupStrategy {
             String fileName = "backup_mysql_" + config.getDbName() + "_" + timestamp + ".sql";
             String filePath = backupDir.getAbsolutePath() + File.separator + fileName;
 
-            // Build the mysqldump command
             ProcessBuilder pb = new ProcessBuilder(
                     "mysqldump",
-                    "--no-defaults", // Prevent reading /etc/my.cnf inside container
+                    "--no-defaults",
                     "-h", config.getHost(),
                     "-P", String.valueOf(config.getPort()),
                     "-u", config.getUsername(),
-                    "--column-statistics=0", // Fix for MySQL 8+ compatibility
+                    "--column-statistics=0",
                     "--result-file=" + filePath,
                     config.getDbName()
             );
 
-            // Securely set the password in the environment variables
             pb.environment().put("MYSQL_PWD", config.getPassword());
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
 
-            // --- THE FIX: Consume the output to prevent OS buffer deadlock ---
+            // ✅ CRITICAL FIX: Store the Process in the holder
+            processHolder.setProcess(process);
+
+            // Consume output to prevent deadlock
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    // This prints the real-time mysqldump logs to your Spring Boot terminal!
                     System.out.println("[mysqldump] " + line);
                 }
             }
-            // -----------------------------------------------------------------
 
             int exitCode = process.waitFor();
 
@@ -75,7 +77,6 @@ public class MySQLBackupStrategy implements BackupStrategy {
             }
 
         } catch (Exception e) {
-            // Catch checked exceptions and throw RuntimeException to trigger your BackupServiceImpl retry loop
             throw new RuntimeException("MySQL strategy failed: " + e.getMessage(), e);
         }
     }
