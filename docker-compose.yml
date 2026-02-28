@@ -16,10 +16,13 @@ services:
     container_name: resilientdb_app
     ports:
       - "8080:8080"
+      - "5005:5005" # ✅ Step 1: Open the Debug Port
     depends_on:
       - postgres_db
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres_db:5432/resilientdb
+      # ✅ Step 2: Tell Java to allow remote debugging
+      - JAVA_TOOL_OPTIONS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
     volumes:
       - ./backups:/app/backups
 
