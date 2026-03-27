@@ -13,3 +13,18 @@ application-local.properties
 # Prevent pushing large binary artifacts from the build process
 target/
 *.jar
+*.war
+
+# --- IDE and System Files ---
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+.classpath
+.project
+.settings/
+
+# Mac/Windows System Files
+.DS_Store
+Thumbs.db
