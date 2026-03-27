@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Windows developers often lose the executable flag on this file, this forces it back.
+      - name: Make Maven Wrapper Executable
+        run: chmod +x mvnw
+
+      # Step 1: Verify the Spring Boot application successfully builds into a .jar
+      - name: Build Application (No Tests)
+        run: ./mvnw clean package -DskipTests
+
+      # Step 2: Run only the unit tests that do NOT require a live PostgreSQL database
+      - name: Run Core Logic Tests
+        run: ./mvnw test -Dtest="BackupServiceImplTest,BackupAsyncWorkerTest"
